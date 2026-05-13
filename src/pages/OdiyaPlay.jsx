@@ -164,18 +164,12 @@ export default function OdiyaPlay({ room, code, myPlayerId, leadPlayer, players 
   const myReadyReveal = !!readyReveal[myPlayerId];
   const myReadyNext = !!readyNext[myPlayerId];
 
-  // 디버그 로그 (문제 해결 후 제거)
-  if (typeof window !== "undefined" && phase === "result") {
-    console.log("[Ready Debug] reveal:", { readyRevealCount, totalPlayerCount, activePlayerIds, readyReveal, isHost, phase });
-  }
-
   // 모두 reveal ready → 방장이 revealResult 호출
   useEffect(() => {
     if (!isHost) return;
     if (phase !== "result") return;
     if (currentResult?.revealed) return;
     if (readyRevealCount === totalPlayerCount && totalPlayerCount > 0) {
-      console.log("[Ready] Triggering revealResult");
       revealResult(code, room.currentRound);
     }
   }, [isHost, phase, readyRevealCount, totalPlayerCount, currentResult?.revealed]); // eslint-disable-line
@@ -189,7 +183,6 @@ export default function OdiyaPlay({ room, code, myPlayerId, leadPlayer, players 
       const key = `${room.currentRound}`;
       if (nextTriggeredRef.current[key]) return;
       nextTriggeredRef.current[key] = true;
-      console.log("[Ready] Triggering nextRound");
       nextRound(code);
     }
   }, [isHost, phase, readyNextCount, totalPlayerCount]); // eslint-disable-line

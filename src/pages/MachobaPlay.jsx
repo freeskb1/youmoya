@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   submitMachobaVote,
   submitMachobaLeadAnswers,
   revealMachobaResult,
   nextRound,
+  markReady,
 } from "../lib/room";
 import { josa } from "../lib/game";
 import Avatar from "../components/Avatar";
@@ -122,13 +123,46 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
     setSubmitting(false);
   }
 
-  async function handleReveal() {
-    await revealMachobaResult(code, room.currentRound);
+  // 준비 체크
+  async function handleMarkReadyReveal() {
+    await markReady(code, room.currentRound, "reveal", myPlayerId);
   }
 
-  async function handleNextRound() {
-    await nextRound(code);
+  async function handleMarkReadyNext() {
+    await markReady(code, room.currentRound, "next", myPlayerId);
   }
+
+  const isHost = (room.players?.[myPlayerId] || {}).isHost;
+  const readyReveal = room.readyState?.[room.currentRound]?.reveal || {};
+  const readyNext = room.readyState?.[room.currentRound]?.next || {};
+  const readyRevealCount = Object.keys(readyReveal).length;
+  const readyNextCount = Object.keys(readyNext).length;
+  const totalPlayerCount = players.length;
+  const myReadyReveal = !!readyReveal[myPlayerId];
+  const myReadyNext = !!readyNext[myPlayerId];
+
+  // 모두 reveal ready → 방장이 revealMachobaResult 호출
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "result") return;
+    if (currentResult?.revealed) return;
+    if (readyRevealCount >= totalPlayerCount && totalPlayerCount > 0) {
+      revealMachobaResult(code, room.currentRound);
+    }
+  }, [isHost, phase, readyRevealCount, totalPlayerCount, currentResult?.revealed]); // eslint-disable-line
+
+  // 모두 next ready → 방장이 nextRound 호출 (중복 방지)
+  const nextTriggeredRef = useRef({});
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "reveal") return;
+    if (readyNextCount >= totalPlayerCount && totalPlayerCount > 0) {
+      const key = `${room.currentRound}`;
+      if (nextTriggeredRef.current[key]) return;
+      nextTriggeredRef.current[key] = true;
+      nextRound(code);
+    }
+  }, [isHost, phase, readyNextCount, totalPlayerCount]); // eslint-disable-line
 
   // ============ 렌더 ============
   if (phase === "intro") {
@@ -197,7 +231,10 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
         leadAnswers={leadAnswers || []}
         myAnswers={isLead ? leadAnswers || [] : myStepAnswers}
         isLead={isLead}
-        onNext={handleReveal}
+        onMarkReady={handleMarkReadyReveal}
+        isReady={myReadyReveal}
+        readyCount={readyRevealCount}
+        totalCount={totalPlayerCount}
       />
     );
   }
@@ -215,7 +252,10 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
         myAnswers={myStepAnswers}
         isLead={isLead}
         isLastRound={room.currentRound >= room.totalRounds}
-        onNext={handleNextRound}
+        onMarkReady={handleMarkReadyNext}
+        isReady={myReadyNext}
+        readyCount={readyNextCount}
+        totalCount={totalPlayerCount}
       />
     );
   }
@@ -270,7 +310,7 @@ function PopupBackground({ leadPlayer, round, totalRounds, isLead }) {
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
         <span style={{ fontWeight: 600 }}>Round {round} / {totalRounds}</span>
         <span style={{ color: isLead ? colors.correctText : colors.accentText, fontWeight: 600 }}>
-          🙈 {isLead ? "내가 선" : `선: ${leadPlayer?.nickname}`}
+          🙈 {isLead ? "내가 선플레이어" : `선플레이어: ${leadPlayer?.nickname}`}
         </span>
       </div>
       <p style={{ textAlign: "center", fontSize: 14, fontWeight: 600 }}>
@@ -325,7 +365,7 @@ function ConfirmView({ round, totalRounds, leadPlayer, questions, myAnswers, isL
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
         <span style={{ fontWeight: 600 }}>Round {round} / {totalRounds}</span>
         <span style={{ color: isLead ? colors.correctText : colors.accentText, fontWeight: 600 }}>
-          🙈 {isLead ? "내가 선" : `선: ${leadPlayer?.nickname}`}
+          🙈 {isLead ? "내가 선플레이어" : `선플레이어: ${leadPlayer?.nickname}`}
         </span>
       </div>
 
@@ -466,13 +506,13 @@ function MyGuessRow({ index, question, answer }) {
 // ============================================
 // 결과 정리 (선 플레이어 답변 완료, 정답 공개 직전)
 // ============================================
-function ResultView({ room, leadPlayer, questions, leadAnswers, myAnswers, isLead, onNext }) {
+function ResultView({ room, leadPlayer, questions, leadAnswers, myAnswers, isLead, onMarkReady, isReady, readyCount, totalCount }) {
   return (
     <div style={{ ...containerStyle, padding: "14px 12px 16px", justifyContent: "center" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
         <span style={{ fontWeight: 600 }}>Round {room.currentRound} / {room.totalRounds}</span>
         <span style={{ color: isLead ? colors.correctText : colors.accentText, fontWeight: 600 }}>
-          🙈 {isLead ? "내가 선" : `선: ${leadPlayer?.nickname}`}
+          🙈 {isLead ? "내가 선플레이어" : `선플레이어: ${leadPlayer?.nickname}`}
         </span>
       </div>
 
@@ -497,18 +537,14 @@ function ResultView({ room, leadPlayer, questions, leadAnswers, myAnswers, isLea
         ))}
       </div>
 
-      <button
-        onClick={onNext}
-        style={{
-          padding: 12, borderRadius: radius.lg,
-          border: `1.5px solid ${colors.border2}`,
-          background: colors.surface, fontSize: 14, fontWeight: 600,
-          color: colors.text1, cursor: "pointer",
-          fontFamily: "inherit", boxShadow: shadow.sm,
-        }}
-      >
-        🎉 정답자 공개 →
-      </button>
+      <ReadyButton
+        isReady={isReady}
+        readyCount={readyCount}
+        totalCount={totalCount}
+        onClick={onMarkReady}
+        actionLabel="🎉 정답자 공개"
+        waitingLabel="정답자 공개"
+      />
     </div>
   );
 }
@@ -516,7 +552,7 @@ function ResultView({ room, leadPlayer, questions, leadAnswers, myAnswers, isLea
 // ============================================
 // 정답 공개 (모든 투표자의 점수 표시)
 // ============================================
-function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, myPlayerId, myAnswers, isLead, isLastRound, onNext }) {
+function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, myPlayerId, myAnswers, isLead, isLastRound, onMarkReady, isReady, readyCount, totalCount }) {
   const myVote = votes.find((v) => v.playerId === myPlayerId);
   const myMatchCount = myVote?.matchCount ?? 0;
   const count = questions.length;
@@ -543,7 +579,7 @@ function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, 
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
         <span style={{ fontWeight: 600 }}>Round {room.currentRound} / {room.totalRounds}</span>
         <span style={{ color: isLead ? colors.correctText : colors.accentText, fontWeight: 600 }}>
-          🙈 {isLead ? "내가 선" : `선: ${leadPlayer?.nickname}`}
+          🙈 {isLead ? "내가 선플레이어" : `선플레이어: ${leadPlayer?.nickname}`}
         </span>
       </div>
 
@@ -616,18 +652,14 @@ function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, 
         </div>
       </div>
 
-      <button
-        onClick={onNext}
-        style={{
-          padding: 12, borderRadius: radius.lg,
-          fontSize: 14, fontWeight: 700,
-          border: "none", background: colors.accentBg, color: colors.accentDeep,
-          boxShadow: "0 2px 4px rgba(83,74,183,0.15)",
-          cursor: "pointer", fontFamily: "inherit",
-        }}
-      >
-        {isLastRound ? "🎊 최종 결과 보기 →" : "▶ 다음 라운드 →"}
-      </button>
+      <ReadyButton
+        isReady={isReady}
+        readyCount={readyCount}
+        totalCount={totalCount}
+        onClick={onMarkReady}
+        actionLabel={isLastRound ? "🎊 최종 결과 보기" : "▶ 다음 라운드"}
+        waitingLabel={isLastRound ? "최종 결과 보기" : "다음 라운드"}
+      />
     </div>
   );
 }
@@ -706,6 +738,73 @@ function VoterLine({ label, type, voters, myPlayerId, isCorrect }) {
         <span style={{ fontSize: 11, fontWeight: 700, color: type === "yes" ? colors.correctText : colors.wrongFill }}>
           +{voters.length}
         </span>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// 준비 버튼 (모두 준비될 때까지 대기)
+// ============================================
+function ReadyButton({ isReady, readyCount, totalCount, onClick, actionLabel }) {
+  const percent = totalCount > 0 ? (readyCount / totalCount) * 100 : 0;
+
+  if (isReady) {
+    return (
+      <div
+        style={{
+          padding: "14px 16px",
+          borderRadius: radius.lg,
+          background: colors.surface,
+          border: `1.5px solid ${colors.border1}`,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 12, color: colors.text2, fontWeight: 600, marginBottom: 8 }}>
+          ⏳ 다른 친구들을 기다리는 중 · {readyCount}/{totalCount}
+        </div>
+        <div style={{ height: 4, borderRadius: 100, background: colors.surface2, overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${percent}%`,
+              background: colors.correctFill,
+              borderRadius: 100,
+              transition: "width 0.4s",
+            }}
+          />
+        </div>
+        <div style={{ fontSize: 10, color: colors.text3, marginTop: 6 }}>
+          모두 준비되면 자동으로 넘어가요
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        onClick={onClick}
+        style={{
+          width: "100%",
+          padding: 13,
+          borderRadius: radius.lg,
+          background: colors.accentBg,
+          color: colors.accentDeep,
+          fontSize: 14,
+          fontWeight: 700,
+          border: "none",
+          boxShadow: "0 2px 4px rgba(83,74,183,0.15)",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        {actionLabel} →
+      </button>
+      {readyCount > 0 && (
+        <div style={{ fontSize: 10, color: colors.text3, textAlign: "center", marginTop: 6 }}>
+          {readyCount}명이 먼저 준비됨 · 모두 준비되면 자동 진행
+        </div>
       )}
     </div>
   );

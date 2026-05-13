@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { submitVote, submitAnswer, revealResult, nextRound } from "../lib/room";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { submitVote, submitAnswer, revealResult, nextRound, markReady } from "../lib/room";
 import {
   getDestination,
   getCardIndexAtLevel,
@@ -140,13 +140,59 @@ export default function OdiyaPlay({ room, code, myPlayerId, leadPlayer, players 
     await submitAnswer(code, answer);
   }
 
-  async function handleReveal() {
-    await revealResult(code, room.currentRound);
+  // 준비 체크 - 본인만 ready 표시
+  async function handleMarkReadyReveal() {
+    await markReady(code, room.currentRound, "reveal", myPlayerId);
   }
 
-  async function handleNextRound() {
-    await nextRound(code);
+  async function handleMarkReadyNext() {
+    await markReady(code, room.currentRound, "next", myPlayerId);
   }
+
+  // 자동 트리거: 모두 ready 되면 방장이 다음 단계로 진행
+  const isHost = (room.players?.[myPlayerId] || {}).isHost;
+  const readyReveal = room.readyState?.[room.currentRound]?.reveal || {};
+  const readyNext = room.readyState?.[room.currentRound]?.next || {};
+
+  // 실제 방에 있는 플레이어만 카운트 (떠난 플레이어 ready 제외)
+  const activePlayerIds = players.map((p) => p.id);
+  const readyRevealActive = activePlayerIds.filter((id) => readyReveal[id]);
+  const readyNextActive = activePlayerIds.filter((id) => readyNext[id]);
+  const readyRevealCount = readyRevealActive.length;
+  const readyNextCount = readyNextActive.length;
+  const totalPlayerCount = players.length;
+  const myReadyReveal = !!readyReveal[myPlayerId];
+  const myReadyNext = !!readyNext[myPlayerId];
+
+  // 디버그 로그 (문제 해결 후 제거)
+  if (typeof window !== "undefined" && phase === "result") {
+    console.log("[Ready Debug] reveal:", { readyRevealCount, totalPlayerCount, activePlayerIds, readyReveal, isHost, phase });
+  }
+
+  // 모두 reveal ready → 방장이 revealResult 호출
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "result") return;
+    if (currentResult?.revealed) return;
+    if (readyRevealCount === totalPlayerCount && totalPlayerCount > 0) {
+      console.log("[Ready] Triggering revealResult");
+      revealResult(code, room.currentRound);
+    }
+  }, [isHost, phase, readyRevealCount, totalPlayerCount, currentResult?.revealed]); // eslint-disable-line
+
+  // 모두 next ready → 방장이 nextRound 호출 (중복 방지)
+  const nextTriggeredRef = useRef({});
+  useEffect(() => {
+    if (!isHost) return;
+    if (phase !== "reveal") return;
+    if (readyNextCount === totalPlayerCount && totalPlayerCount > 0) {
+      const key = `${room.currentRound}`;
+      if (nextTriggeredRef.current[key]) return;
+      nextTriggeredRef.current[key] = true;
+      console.log("[Ready] Triggering nextRound");
+      nextRound(code);
+    }
+  }, [isHost, phase, readyNextCount, totalPlayerCount]); // eslint-disable-line
 
   // ============ 렌더 ============
   // final 은 라우터(GamePlay)에서 처리
@@ -288,7 +334,10 @@ export default function OdiyaPlay({ room, code, myPlayerId, leadPlayer, players 
         depth={depth}
         myPlayerId={myPlayerId}
         myAnswers={myStepAnswers}
-        onNext={handleReveal}
+        onMarkReady={handleMarkReadyReveal}
+        isReady={myReadyReveal}
+        readyCount={readyRevealCount}
+        totalCount={totalPlayerCount}
       />
     );
   }
@@ -304,7 +353,10 @@ export default function OdiyaPlay({ room, code, myPlayerId, leadPlayer, players 
         depth={depth}
         myPlayerId={myPlayerId}
         isLastRound={room.currentRound >= room.totalRounds}
-        onNext={handleNextRound}
+        onMarkReady={handleMarkReadyNext}
+        isReady={myReadyNext}
+        readyCount={readyNextCount}
+        totalCount={totalPlayerCount}
       />
     );
   }
@@ -387,7 +439,7 @@ function Header({ round, totalRounds, leadName, mode }) {
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
       <span style={{ fontWeight: 600 }}>Round {round} / {totalRounds}</span>
       <span style={{ color: isLead ? colors.correctText : colors.accentText, fontWeight: 600 }}>
-        🙈 {isLead ? "내가 선" : `선: ${leadName}`}
+        🙈 {isLead ? "내가 선플레이어" : `선플레이어: ${leadName}`}
       </span>
     </div>
   );
@@ -642,7 +694,7 @@ function WatchingScreen({ room, leadPlayer, depth, myAnswers }) {
 // ============================================
 // 결과 정리 (선 플레이어 답변 완료)
 // ============================================
-function ResultView({ room, leadPlayer, result, depth, myPlayerId, myAnswers, onNext }) {
+function ResultView({ room, leadPlayer, result, depth, myPlayerId, myAnswers, onMarkReady, isReady, readyCount, totalCount }) {
   if (!room.pyramid || !leadPlayer) return null;
   const answers = room.pyramid.answers || [];
   const sequence = getAnswerSequence(answers);
@@ -678,23 +730,14 @@ function ResultView({ room, leadPlayer, result, depth, myPlayerId, myAnswers, on
         />
       </div>
 
-      <button
-        onClick={onNext}
-        style={{
-          padding: 12,
-          borderRadius: radius.lg,
-          border: `1.5px solid ${colors.border2}`,
-          background: colors.surface,
-          fontSize: 14,
-          fontWeight: 600,
-          color: colors.text1,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          boxShadow: shadow.sm,
-        }}
-      >
-        🎉 정답자 공개 →
-      </button>
+      <ReadyButton
+        isReady={isReady}
+        readyCount={readyCount}
+        totalCount={totalCount}
+        onClick={onMarkReady}
+        actionLabel="🎉 정답자 공개"
+        waitingLabel="정답자 공개"
+      />
     </div>
   );
 }
@@ -702,7 +745,7 @@ function ResultView({ room, leadPlayer, result, depth, myPlayerId, myAnswers, on
 // ============================================
 // 정답 공개
 // ============================================
-function RevealView({ room, players, leadPlayer, result, votes, depth, myPlayerId, isLastRound, onNext }) {
+function RevealView({ room, players, leadPlayer, result, votes, depth, myPlayerId, isLastRound, onMarkReady, isReady, readyCount, totalCount }) {
   if (!result || !leadPlayer || !room.pyramid) return null;
 
   const correctVoters = votes.filter((v) => v.vote === result.destination);
@@ -830,24 +873,84 @@ function RevealView({ room, players, leadPlayer, result, votes, depth, myPlayerI
         </div>
       </div>
 
-      <button
-        onClick={onNext}
+      <ReadyButton
+        isReady={isReady}
+        readyCount={readyCount}
+        totalCount={totalCount}
+        onClick={onMarkReady}
+        actionLabel={isLastRound ? "🎊 최종 결과 보기" : "▶ 다음 라운드"}
+        waitingLabel={isLastRound ? "최종 결과 보기" : "다음 라운드"}
+      />
+    </div>
+  );
+}
+
+
+// ============================================
+// 준비 버튼 (모두 준비될 때까지 대기)
+// ============================================
+function ReadyButton({ isReady, readyCount, totalCount, onClick, actionLabel, waitingLabel }) {
+  const percent = totalCount > 0 ? (readyCount / totalCount) * 100 : 0;
+
+  if (isReady) {
+    // 본인이 이미 준비됨 → 진행률만 표시
+    return (
+      <div
         style={{
-          padding: 12,
+          padding: "14px 16px",
           borderRadius: radius.lg,
+          background: colors.surface,
+          border: `1.5px solid ${colors.border1}`,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 12, color: colors.text2, fontWeight: 600, marginBottom: 8 }}>
+          ⏳ 다른 친구들을 기다리는 중 · {readyCount}/{totalCount}
+        </div>
+        <div style={{ height: 4, borderRadius: 100, background: colors.surface2, overflow: "hidden" }}>
+          <div
+            style={{
+              height: "100%",
+              width: `${percent}%`,
+              background: colors.correctFill,
+              borderRadius: 100,
+              transition: "width 0.4s",
+            }}
+          />
+        </div>
+        <div style={{ fontSize: 10, color: colors.text3, marginTop: 6 }}>
+          모두 준비되면 자동으로 넘어가요
+        </div>
+      </div>
+    );
+  }
+
+  // 아직 준비 안됨 → 액션 버튼
+  return (
+    <div>
+      <button
+        onClick={onClick}
+        style={{
+          width: "100%",
+          padding: 13,
+          borderRadius: radius.lg,
+          background: colors.accentBg,
+          color: colors.accentDeep,
           fontSize: 14,
           fontWeight: 700,
           border: "none",
-          background: colors.accentBg,
-          color: colors.accentDeep,
           boxShadow: "0 2px 4px rgba(83,74,183,0.15)",
           cursor: "pointer",
           fontFamily: "inherit",
         }}
       >
-        {isLastRound ? "🎊 최종 결과 보기 →" : "▶ 다음 라운드 →"}
+        {actionLabel} →
       </button>
+      {readyCount > 0 && (
+        <div style={{ fontSize: 10, color: colors.text3, textAlign: "center", marginTop: 6 }}>
+          {readyCount}명이 먼저 준비됨 · 모두 준비되면 자동 진행
+        </div>
+      )}
     </div>
   );
 }
-

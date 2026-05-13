@@ -417,6 +417,19 @@ export async function nextRound(code) {
 }
 
 // ============================================
+// 준비 체크 (정답자 공개 / 다음 라운드 대기)
+// ============================================
+// readyKey: "reveal" 또는 "next"
+export async function markReady(code, round, readyKey, playerId) {
+  await set(ref(db, `rooms/${code}/readyState/${round}/${readyKey}/${playerId}`), true);
+}
+
+// 준비 상태 초기화 (라운드 넘어갈 때)
+export async function clearReadyState(code, round) {
+  await remove(ref(db, `rooms/${code}/readyState/${round}`));
+}
+
+// ============================================
 // 방 닫기
 // ============================================
 export async function closeRoom(code) {

@@ -243,7 +243,8 @@ export function calculateSoulmate(myPlayerId, myLeadRounds, allVotes) {
     const allEntries = Object.entries(playerStats)
       .map(([playerId, stat]) => ({
         playerId,
-        correctCount: stat.correct,
+        // total이 0이면 데이터 이상 - correctCount도 0으로 (0개 중 5개 같은 표시 방지)
+        correctCount: stat.total > 0 ? stat.correct : 0,
         total: stat.total,
         percent: stat.total > 0 ? Math.round((stat.correct / stat.total) * 100) : 0,
       }))

@@ -30,7 +30,8 @@ export default function GamePlay({ room, code, myPlayerId }) {
       const r = parseInt(round, 10);
       const result = results[r];
       // 라운드의 마쵸바 문제 수 (있으면)
-      const machobaCount = result?.questions?.length || 0;
+      // 라운드의 문제 수 (마쵸바: questions, 너모야: scenarios)
+      const machobaCount = (result?.questions?.length) || (result?.scenarios?.length) || 0;
       for (const pid in v[round]) {
         const voteData = v[round][pid];
         out.push({
@@ -231,7 +232,7 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
                       {entry.player.nickname}
                     </div>
                     <div style={{ fontSize: 10, color: colors.pinkText }}>
-                      {entry.total}개 중 {entry.correctCount}개 · {entry.percent}%
+                      {entry.total}개 중 {entry.correctCount}개 일치
                     </div>
                   </div>
                 </div>
@@ -269,7 +270,7 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
             <div style={{ fontSize: 12, fontWeight: 600, color: colors.text1 }}>
               {worstEntry.player.nickname}
               <span style={{ fontSize: 10, color: colors.text3, fontWeight: 400, marginLeft: 6 }}>
-                {worstEntry.total}개 중 {worstEntry.correctCount}개 · {worstEntry.percent}%
+                {worstEntry.total}개 중 {worstEntry.correctCount}개 일치
               </span>
             </div>
           </div>

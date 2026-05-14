@@ -234,14 +234,12 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   }, [subMode, isHost, phase, readyNextCount, totalPlayerCount]); // eslint-disable-line
 
   // 재미 모드: 모두 답변 완료 → 방장이 자동 finish
-  const funFinishTriggeredRef = useRef(false);
+  // (ref 안 씀 - finishNeomoyaFun이 status를 finished로 바꾸면 가드에 걸려 중복 방지됨)
   useEffect(() => {
     if (subMode !== "fun") return;
     if (!isHost) return;
     if (room.status === "finished") return;
     if (funSubmittedCount === totalPlayerCount && totalPlayerCount > 0) {
-      if (funFinishTriggeredRef.current) return;
-      funFinishTriggeredRef.current = true;
       finishNeomoyaFun(code);
     }
   }, [subMode, isHost, funSubmittedCount, totalPlayerCount, room.status]); // eslint-disable-line
@@ -315,15 +313,65 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
     );
   }
 
-  // 점수 모드: 투표 완료 후 선플 답 대기 (선플레이어 진행도 표시)
+  // 점수 모드: 투표 완료 후 대기
   if (phase === "voted-waiting" && !isLead) {
+    // 모든 일반 플레이어가 투표를 마쳤는지
+    const allVotersSubmitted = submittedVotesCount >= nonLeadCount && nonLeadCount > 0;
+
+    if (!allVotersSubmitted) {
+      // 아직 다른 일반 플레이어들이 투표 중
+      const submittedIds = currentVotes.map((v) => v.playerId);
+      const list = buildProgressList("scoreVote", submittedIds, [leadPlayer?.id].filter(Boolean));
+      return (
+        <div style={{ ...containerStyle, justifyContent: "center", alignItems: "center", padding: "0 16px" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>⏳</div>
+          <p style={{ fontSize: 14, fontWeight: 700, color: colors.text1, margin: "0 0 4px" }}>
+            예측 완료!
+          </p>
+          <p style={{ fontSize: 12, color: colors.text3, margin: "0 0 10px" }}>
+            다른 친구들이 예측 중이에요
+          </p>
+          <div style={{ marginBottom: 14, padding: "4px 14px", borderRadius: 100, background: colors.accentBg, fontSize: 13, fontWeight: 700, color: colors.accentDeep }}>
+            완료 {submittedVotesCount} / {nonLeadCount}
+          </div>
+          {list.length > 0 && (
+            <div style={{ width: "100%", maxWidth: 300, display: "flex", flexDirection: "column", gap: 6 }}>
+              {list.map((p) => {
+                const isMe = p.id === myPlayerId;
+                return (
+                  <div key={p.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", borderRadius: 10,
+                    background: p.done ? colors.correctBg : colors.surface,
+                    border: `1px solid ${p.done ? colors.correctFill : colors.border1}`,
+                  }}>
+                    <span style={{ fontSize: 12, fontWeight: isMe ? 700 : 600, flex: 1, color: colors.text1 }}>
+                      {p.nickname}
+                    </span>
+                    {p.done ? (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: colors.correctText }}>✓ 완료</span>
+                    ) : (
+                      <span style={{ fontSize: 11, fontWeight: 700, color: colors.text3 }}>
+                        {p.current} / {p.total}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // 모든 일반 플레이어 투표 완료 → 선플레이어 답변 중
     const leadProgress = leadPlayer ? (progressData.scoreLead[leadPlayer.id] || 0) : 0;
     const leadDone = !!leadAnswers;
     return (
       <div style={{ ...containerStyle, justifyContent: "center", alignItems: "center", padding: "0 12px" }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>⏳</div>
         <p style={{ fontSize: 14, fontWeight: 600, color: colors.text1, margin: "0 0 10px" }}>
-          예측 완료!
+          모두 예측 완료!
         </p>
         <div style={{
           padding: "10px 18px", borderRadius: radius.lg,
@@ -812,18 +860,26 @@ function RevealOptionLine({ label, optionText, voters, isLeadChoice, myPlayerId 
         </span>
         {voters.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {voters.map((v, i) => {
-              const isMe = v.id === myPlayerId;
-              return (
-                <span key={v.id} style={{
-                  fontSize: 10,
-                  color: isMe ? colors.accentText : colors.text3,
-                  fontWeight: isMe ? 700 : 500,
-                }}>
-                  {v.nickname}{isMe && " (나)"}{i < voters.length - 1 && <span style={{ opacity: 0.3, marginLeft: 4 }}>·</span>}
-                </span>
-              );
-            })}
+            {(() => {
+              // 내가 이 칸에 있으면 맨 앞으로 정렬
+              const sorted = [...voters].sort((a, b) => {
+                if (a.id === myPlayerId) return -1;
+                if (b.id === myPlayerId) return 1;
+                return 0;
+              });
+              return sorted.map((v, i) => {
+                const isMe = v.id === myPlayerId;
+                return (
+                  <span key={v.id} style={{
+                    fontSize: 10,
+                    color: isMe ? colors.accentText : colors.text3,
+                    fontWeight: isMe ? 800 : 500,
+                  }}>
+                    {v.nickname}{i < sorted.length - 1 && <span style={{ opacity: 0.3, marginLeft: 4 }}>·</span>}
+                  </span>
+                );
+              });
+            })()}
           </div>
         ) : (
           <span style={{ fontSize: 9, color: colors.text3, fontStyle: "italic" }}>

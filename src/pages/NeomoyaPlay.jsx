@@ -99,6 +99,7 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   }
 
   // 라운드 시작 인트로
+  const lastRoundRef = useRef(null);
   useEffect(() => {
     if (room.status !== "playing" && room.status !== "finished") return;
     if (subMode === "fun") {
@@ -106,13 +107,10 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
         setPhase("fun-result");
         return;
       }
-      // status가 playing인데 (재시작 등) - 아직 답 안 했으면 인트로부터
       if (myFunAnswer) {
         setPhase("fun-waiting");
         return;
       }
-      // 답변 안 한 상태 → 인트로 보여주고 2.5초 후 투표 화면
-      // (첫 진입이든 재시작이든 phase를 intro로 맞춤)
       if (phase !== "intro" && phase !== "voting-popup" && phase !== "voting-confirm") {
         setPhase("intro");
       }
@@ -122,11 +120,14 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
       }, 2500);
       return () => clearTimeout(t);
     }
-    // 점수 모드 - 라운드 변경 시
-    if (!leadAnswers && currentVotes.length === 0) {
+    // 점수 모드 - 라운드 진입(번호 바뀜) 시마다 인트로 강제
+    if (lastRoundRef.current !== room.currentRound) {
+      lastRoundRef.current = room.currentRound;
       setPhase("intro");
       setMyStepAnswers([]);
-      const t = setTimeout(() => setPhase(computeNextPhase()), 2500);
+      const t = setTimeout(() => {
+        setPhase((cur) => (cur === "intro" ? computeNextPhase() : cur));
+      }, 2500);
       return () => clearTimeout(t);
     }
   }, [room.currentRound, room.status, subMode]); // eslint-disable-line
@@ -296,6 +297,9 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
           totalSteps={count}
           scenario={scenario}
           onAnswer={handleStepAnswer}
+          leadPlayer={leadPlayer}
+          isLead={isLead}
+          subMode={subMode}
         />
       </PopupBackground>
     );

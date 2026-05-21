@@ -1,15 +1,16 @@
-# 너모야 (Odiya) 🎴
+# 너모야 🎮
 
-YES or NO 추리 파티 게임의 모바일 웹 버전. 친구들과 한자리에 모여 각자 핸드폰으로 접속해 즐기는 멀티플레이어 게임입니다.
+친구들과 모여 각자 폰으로 접속하는 모바일 파티 게임. 친구를 얼마나 아는지 추리하는 두 가지 게임 모드를 제공합니다.
 
-## 게임 설명
+## 게임 모드
 
-선 플레이어가 어디에 도착할지 다른 사람들이 미리 투표하고, 선 플레이어가 1-2-3 피라미드 형태의 질문에 YES/NO로 답변하며 도착지를 결정합니다. 잘 맞춘 사람은 점수를 얻습니다.
+### 🎯 마쵸바
+선플레이어를 향한 N개 질문에 다른 사람들이 어떻게 답할지 예측. 맞춘 개수만큼 점수. (5/7/10문제, 1~3바퀴)
 
-- 2명 이상 플레이 가능
-- 2~4인: 각자 선 플레이어 2번씩
-- 5인 이상: 각자 선 플레이어 1번씩
-- 게임 종료 시 우승자 + "나를 가장 잘 맞춘 사람" 발표
+### 🎭 너모야
+**점수 모드** — 시나리오 양자택일 (A/B). 선플레이어의 선택을 다른 사람들이 예측. (5/10/15시나리오)
+
+**재미 모드** — 모두 동시에 양자택일에 답변. 영혼의 단짝, 정반대 영혼, 가장 독특한 답변, 호불호 갈린 시나리오 발표. (4명+, 선플레이어 없음)
 
 ## 🛠 기술 스택
 
@@ -63,9 +64,9 @@ npm run dev
 ```bash
 git init
 git add .
-git commit -m "Initial commit: Odiya game"
+git commit -m "Initial commit: Neomoya"
 git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/odiya.git
+git remote add origin https://github.com/YOUR_USERNAME/neomoya.git
 git push -u origin main
 ```
 
@@ -89,14 +90,14 @@ git push -u origin main
 #### Firebase에 Vercel 도메인 추가
 
 1. Firebase Console → **Authentication → Settings → Authorized domains**
-2. Vercel에서 받은 도메인 추가 (예: `odiya.vercel.app`)
+2. Vercel에서 받은 도메인 추가 (예: `neomoya.vercel.app`)
 
 ---
 
 ## 📁 프로젝트 구조
 
 ```
-odiya/
+neomoya/
 ├── index.html              # Vite 진입점
 ├── src/
 │   ├── main.jsx            # React 진입점
@@ -105,18 +106,20 @@ odiya/
 │   │   ├── HomePage.jsx    # 시작 화면
 │   │   ├── JoinPage.jsx    # 방 입장 (코드 입력)
 │   │   ├── RoomPage.jsx    # 방 페이지 (대기실)
-│   │   └── GamePlay.jsx    # 게임 진행 (모든 phase)
+│   │   ├── GamePlay.jsx    # 모드별 라우터 + 최종 결과
+│   │   ├── MachobaPlay.jsx # 마쵸바 모드 진행
+│   │   └── NeomoyaPlay.jsx # 너모야 모드 진행 (점수/재미)
 │   ├── components/
 │   │   ├── Avatar.jsx
-│   │   ├── Card.jsx        # 카드 + 팝업 모달
-│   │   ├── Pyramid.jsx     # 피라미드 레이아웃
-│   │   └── VoteBoxes.jsx   # A/B/C 투표함
+│   │   ├── StepPopup.jsx     # 마쵸바 YES/NO 팝업
+│   │   └── ScenarioPopup.jsx # 너모야 시나리오 A/B 팝업
 │   └── lib/
 │       ├── firebase.js     # Firebase 클라이언트 + Auth
 │       ├── room.js         # 방/게임 액션 (DB 쓰기)
-│       ├── game.js         # 게임 로직 (피라미드, 점수, 도착지)
-│       ├── questions.js    # 질문 카드 풀 (130+ 개)
-│       ├── storage.js      # 로컬 스토리지 (플레이어 ID)
+│       ├── game.js         # 게임 로직 (풀 생성, 점수, 통계)
+│       ├── questions.js    # 마쵸바용 질문 풀 (260개)
+│       ├── scenarios.js    # 너모야용 시나리오 풀 (170+)
+│       ├── storage.js      # 로컬 스토리지 (플레이어 ID, 닉네임)
 │       └── theme.js        # 디자인 토큰 (색상, radius)
 ├── firebase-rules.json     # Firebase DB 보안 규칙
 ├── vercel.json             # Vercel SPA 라우팅
@@ -129,22 +132,22 @@ odiya/
 
 1. 방장이 **방 만들기** → 3자리 코드 + QR 자동 생성
 2. 친구들이 **코드 입력 또는 QR 스캔**으로 입장 (폰 기본 카메라로 QR 찍으면 URL 자동 열림)
-3. 방장이 **게임 시작** 클릭
+3. 방장이 모드 선택 (마쵸바 또는 너모야) → **게임 시작** 클릭
 4. 매 라운드마다:
-   - 선 플레이어 발표 (랜덤 → 순차적)
-   - 선 플레이어는 "옆 사람 화면 훔쳐보지 마세요" 화면
-   - 다른 사람들은 피라미드를 보고 투표함 A/B/C 선택
-   - 모두 투표 완료 → 선 플레이어가 카드를 탭하며 YES/NO 답변
+   - 선플레이어 발표 (라운드별 순환)
+   - 일반 플레이어는 선플레이어가 어떻게 답할지 예측
+   - 모두 예측 완료 → 선플레이어가 답변 (일반 플레이어 화면에 같은 질문이 실시간으로 공유됨)
    - 결과 정리 + 정답 공개 + 점수 부여
-5. 모든 라운드 완료 → 우승자 + 소울메이트 발표
+5. 모든 라운드 완료 → 우승자 + "나를 잘 맞춘 사람 TOP 3" 발표
 
 ---
 
 ## 🔧 개발 팁
 
-### 질문 카드 추가/수정
+### 질문/시나리오 추가 수정
 
-`src/lib/questions.js` 파일에서 자유롭게 추가/수정 가능합니다.
+- 마쵸바 질문: `src/lib/questions.js`
+- 너모야 시나리오: `src/lib/scenarios.js`
 
 ### 로컬 스토리지 초기화
 

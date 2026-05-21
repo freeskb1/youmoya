@@ -4,12 +4,18 @@ import { colors, radius, shadow } from "../lib/theme";
 // 시나리오 팝업 (너모야 모드 전용)
 // scenario: { scenario, optionA, optionB }
 // onAnswer: ("A" | "B") => void
+// leadPlayer: { nickname } (점수 모드 시 누구 답변 예측인지 표시용)
+// isLead: 내가 선플레이어인지 (true면 "내 답변" 표시)
+// subMode: "score" | "fun"
 export default function ScenarioPopup({
   open,
   currentStep,
   totalSteps,
   scenario,
   onAnswer,
+  leadPlayer,
+  isLead,
+  subMode,
 }) {
   const [animate, setAnimate] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -105,6 +111,20 @@ export default function ScenarioPopup({
             {currentStep}단계 / {totalSteps}
           </span>
         </div>
+
+        {/* 마쵸바 톤의 헤드 메시지 (점수 모드 한정) */}
+        {subMode !== "fun" && leadPlayer && (
+          <p style={{
+            textAlign: "center",
+            fontSize: 13,
+            fontWeight: 700,
+            color: colors.text1,
+            margin: "0 0 10px",
+            lineHeight: 1.4,
+          }}>
+            {isLead ? "당신의 답변은?" : `${leadPlayer.nickname}는 어떻게 답할까요?`}
+          </p>
+        )}
 
         {/* 시나리오 */}
         <div

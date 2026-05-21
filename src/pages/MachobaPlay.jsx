@@ -78,16 +78,18 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
     return "voting-popup";
   }
 
-  // 라운드 시작 인트로
+  // 라운드 시작 인트로 (라운드 번호 바뀌면 무조건 인트로)
+  const lastRoundRef = useRef(null);
   useEffect(() => {
     if (room.status !== "playing") return;
-    if (!leadAnswers && currentVotes.length === 0) {
+    if (lastRoundRef.current !== room.currentRound) {
+      lastRoundRef.current = room.currentRound;
       setPhase("intro");
       setMyStepAnswers([]);
       const t = setTimeout(() => setPhase(computeNextPhase()), 2500);
       return () => clearTimeout(t);
     }
-  }, [room.currentRound]); // eslint-disable-line
+  }, [room.currentRound, room.status]); // eslint-disable-line
 
   // 통합 phase
   useEffect(() => {

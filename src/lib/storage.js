@@ -1,5 +1,5 @@
-const KEY_PLAYER = "odiya:player";
-const KEY_NICKNAME = "odiya:lastNickname";
+const KEY_PLAYER = "neomoya:player";
+const KEY_NICKNAME = "neomoya:lastNickname";
 
 export function savePlayer(p) {
   try {

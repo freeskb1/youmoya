@@ -1178,7 +1178,11 @@ function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onF
             ⚙️ 모드 바꿔서 다시하기
           </button>
           <button
-            onClick={onFinish}
+            onClick={() => {
+              if (window.confirm("방을 닫고 홈으로 돌아갈까요?\n(다른 친구들도 모두 나가게 돼요)")) {
+                onFinish();
+              }
+            }}
             style={{
               padding: 11, borderRadius: radius.lg,
               background: "transparent", color: colors.text3,
@@ -1195,7 +1199,11 @@ function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onF
             방장이 다음 게임을 준비하고 있어요
           </p>
           <button
-            onClick={onFinish}
+            onClick={() => {
+              if (window.confirm("방에서 나가고 홈으로 돌아갈까요?")) {
+                onFinish();
+              }
+            }}
             style={{
               padding: 11, borderRadius: radius.lg,
               background: "transparent", color: colors.text3,

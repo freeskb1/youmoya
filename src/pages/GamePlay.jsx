@@ -368,7 +368,14 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
           </button>
         )}
         <button
-          onClick={onLeave}
+          onClick={() => {
+            const msg = isHost
+              ? "방을 닫고 홈으로 돌아갈까요?\n(다른 친구들도 모두 나가게 돼요)"
+              : "방에서 나가고 홈으로 돌아갈까요?";
+            if (window.confirm(msg)) {
+              onLeave();
+            }
+          }}
           style={{
             padding: 11, borderRadius: radius.lg,
             background: "transparent",

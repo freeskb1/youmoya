@@ -755,6 +755,8 @@ function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, 
           const correctAns = leadAnswers[i];
           const yesVoters = getVotersForQuestion(i, "YES");
           const noVoters = getVotersForQuestion(i, "NO");
+          // 내 예측 (선플레이어가 아닌 경우)
+          const myAns = !isLead ? (myAnswers?.[i]) : null;
           return (
             <QuestionResultRow
               key={i}
@@ -764,6 +766,8 @@ function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, 
               yesVoters={yesVoters}
               noVoters={noVoters}
               myPlayerId={myPlayerId}
+              isLead={isLead}
+              myAns={myAns}
             />
           );
         })}
@@ -803,7 +807,7 @@ function RevealView({ room, players, leadPlayer, questions, leadAnswers, votes, 
 }
 
 // 질문 1개 + 정답 + 양쪽 투표자
-function QuestionResultRow({ index, question, correctAns, yesVoters, noVoters, myPlayerId }) {
+function QuestionResultRow({ index, question, correctAns, yesVoters, noVoters, myPlayerId, isLead, myAns }) {
   return (
     <div style={{
       padding: "10px 12px",
@@ -811,70 +815,92 @@ function QuestionResultRow({ index, question, correctAns, yesVoters, noVoters, m
       background: colors.surface,
       border: `1px solid ${colors.border1}`,
     }}>
-      {/* 질문 + 정답 */}
+      {/* 질문 */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 10, color: colors.text3, fontWeight: 700, minWidth: 14, marginTop: 2 }}>{index}</span>
-        <span style={{ fontSize: 12, color: colors.text1, flex: 1, wordBreak: "keep-all", fontWeight: 600 }}>{question}</span>
-        <span style={{
-          fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 100,
-          background: correctAns === "YES" ? colors.correctFill : colors.wrongFill, color: "#FFFFFF",
-          flexShrink: 0,
-        }}>
-          정답 {correctAns}
-        </span>
+        <span style={{ fontSize: 12, color: colors.text1, flex: 1, wordBreak: "keep-all", fontWeight: 600, lineHeight: 1.4 }}>{question}</span>
       </div>
 
-      {/* 양쪽 투표자 */}
+      {/* YES / NO 양쪽 (중립 보라, 선플 선택만 강조) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <VoterLine label="YES" type="yes" voters={yesVoters} myPlayerId={myPlayerId} isCorrect={correctAns === "YES"} />
-        <VoterLine label="NO" type="no" voters={noVoters} myPlayerId={myPlayerId} isCorrect={correctAns === "NO"} />
+        <RevealVoterLine
+          label="YES"
+          voters={yesVoters}
+          isLeadChoice={correctAns === "YES"}
+          myPlayerId={myPlayerId}
+          myAnswer={myAns}
+          isLead={isLead}
+        />
+        <RevealVoterLine
+          label="NO"
+          voters={noVoters}
+          isLeadChoice={correctAns === "NO"}
+          myPlayerId={myPlayerId}
+          myAnswer={myAns}
+          isLead={isLead}
+        />
       </div>
     </div>
   );
 }
 
-function VoterLine({ label, type, voters, myPlayerId, isCorrect }) {
-  const color = type === "yes" ? colors.correctFill : colors.wrongFill;
-  const bg = isCorrect ? (type === "yes" ? colors.correctBg : colors.wrongBg) : colors.surface2;
+function RevealVoterLine({ label, voters, isLeadChoice, myPlayerId, myAnswer, isLead }) {
+  // 우측 라벨 결정
+  let rightLabel = null;
+  if (isLead) {
+    if (isLeadChoice) rightLabel = "✓ 내 답";
+  } else {
+    if (myAnswer === label && isLeadChoice) rightLabel = "✓ 정답";
+  }
+
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
-      padding: "4px 8px",
+      padding: "7px 9px",
       borderRadius: radius.sm,
-      background: bg,
-      border: isCorrect ? `1.5px solid ${color}` : "none",
+      background: isLeadChoice ? colors.accentBg : colors.surface2,
+      border: isLeadChoice ? `1.5px solid ${colors.accentText}` : `1px solid ${colors.border1}`,
     }}>
       <span style={{
-        fontSize: 10, fontWeight: 700,
-        padding: "2px 8px", borderRadius: 100,
-        background: color, color: "#FFFFFF",
-        minWidth: 32, textAlign: "center",
+        fontSize: 10, fontWeight: 800,
+        padding: "2px 9px", borderRadius: 100,
+        background: isLeadChoice ? colors.accentText : colors.border2,
+        color: "#FFFFFF",
+        minWidth: 36, textAlign: "center", flexShrink: 0,
       }}>
         {label}
       </span>
       {voters.length > 0 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flex: 1 }}>
-          {voters.map((v, i) => {
-            const isMe = v.id === myPlayerId;
-            return (
-              <span key={v.id} style={{
-                fontSize: 11,
-                color: isMe ? color : colors.text1,
-                fontWeight: isMe ? 700 : 500,
-              }}>
-                {v.nickname}{isMe && " (나)"}{i < voters.length - 1 && <span style={{ opacity: 0.3, marginLeft: 4 }}>·</span>}
-              </span>
-            );
-          })}
+          {(() => {
+            // 내가 이 칸에 있으면 맨 앞으로 정렬
+            const sorted = [...voters].sort((a, b) => {
+              if (a.id === myPlayerId) return -1;
+              if (b.id === myPlayerId) return 1;
+              return 0;
+            });
+            return sorted.map((v, i) => {
+              const isMe = v.id === myPlayerId;
+              return (
+                <span key={v.id} style={{
+                  fontSize: 11,
+                  color: isMe ? colors.accentText : colors.text3,
+                  fontWeight: isMe ? 800 : 500,
+                }}>
+                  {v.nickname}{i < sorted.length - 1 && <span style={{ opacity: 0.3, marginLeft: 4 }}>·</span>}
+                </span>
+              );
+            });
+          })()}
         </div>
       ) : (
-        <span style={{ fontSize: 10, color: colors.text3, fontStyle: "italic" }}>
+        <span style={{ fontSize: 10, color: colors.text3, fontStyle: "italic", flex: 1 }}>
           선택자 없음
         </span>
       )}
-      {isCorrect && voters.length > 0 && (
-        <span style={{ fontSize: 11, fontWeight: 700, color: type === "yes" ? colors.correctText : colors.wrongFill }}>
-          +{voters.length}
+      {rightLabel && (
+        <span style={{ fontSize: 9, color: colors.accentText, fontWeight: 700, flexShrink: 0 }}>
+          {rightLabel}
         </span>
       )}
     </div>

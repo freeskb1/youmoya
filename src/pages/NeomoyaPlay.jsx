@@ -882,6 +882,8 @@ function ScenarioRevealRow({ index, scenario, correctAns, myAns, isLead, aVoters
             voters={aVoters}
             isLeadChoice={correctAns === "A"}
             myPlayerId={myPlayerId}
+            myAnswer={myAns}
+            isLead={isLead}
           />
           <RevealOptionLine
             label="B"
@@ -889,6 +891,8 @@ function ScenarioRevealRow({ index, scenario, correctAns, myAns, isLead, aVoters
             voters={bVoters}
             isLeadChoice={correctAns === "B"}
             myPlayerId={myPlayerId}
+            myAnswer={myAns}
+            isLead={isLead}
           />
         </div>
       </div>
@@ -897,7 +901,17 @@ function ScenarioRevealRow({ index, scenario, correctAns, myAns, isLead, aVoters
 }
 
 // 정답 공개 - 선택지 1줄 (A 또는 B), 선플레이어가 고른 칸이면 강조
-function RevealOptionLine({ label, optionText, voters, isLeadChoice, myPlayerId }) {
+function RevealOptionLine({ label, optionText, voters, isLeadChoice, myPlayerId, myAnswer, isLead }) {
+  // 우측 라벨 결정
+  // - 선플레이어 본인: 본인이 고른 칸에 "✓ 내 답"
+  // - 일반 플레이어: 내가 맞춘 칸 (= 내 예측 == 선플 선택)에 "✓ 정답"
+  let rightLabel = null;
+  if (isLead) {
+    if (isLeadChoice) rightLabel = "✓ 내 답";
+  } else {
+    if (myAnswer === label && isLeadChoice) rightLabel = "✓ 정답";
+  }
+
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 8,
@@ -927,7 +941,6 @@ function RevealOptionLine({ label, optionText, voters, isLeadChoice, myPlayerId 
         {voters.length > 0 ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {(() => {
-              // 내가 이 칸에 있으면 맨 앞으로 정렬
               const sorted = [...voters].sort((a, b) => {
                 if (a.id === myPlayerId) return -1;
                 if (b.id === myPlayerId) return 1;
@@ -953,9 +966,9 @@ function RevealOptionLine({ label, optionText, voters, isLeadChoice, myPlayerId 
           </span>
         )}
       </div>
-      {isLeadChoice && (
+      {rightLabel && (
         <span style={{ fontSize: 9, color: colors.accentText, fontWeight: 700, flexShrink: 0, marginTop: 2 }}>
-          ✓ 선플 선택
+          {rightLabel}
         </span>
       )}
     </div>

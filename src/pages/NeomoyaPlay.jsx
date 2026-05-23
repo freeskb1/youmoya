@@ -13,6 +13,7 @@ import {
 import { josa, calculateFunModeStats } from "../lib/game";
 import Avatar from "../components/Avatar";
 import ScenarioPopup from "../components/ScenarioPopup";
+import ConfirmModal from "../components/ConfirmModal";
 import { colors, radius, shadow, containerStyle } from "../lib/theme";
 
 // 너모야 모드 게임 진행
@@ -1027,6 +1028,7 @@ function FunWaitingView({ submittedCount, totalCount, progressList, myPlayerId }
 // 재미 모드 - 최종 결과
 // ============================================
 function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onFinish, onRestart, onReturnToWaiting }) {
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const stats = useMemo(() => calculateFunModeStats(funAnswers, scenarios), [funAnswers, scenarios]);
   const playerById = useMemo(() => {
     const m = {};
@@ -1178,11 +1180,7 @@ function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onF
             ⚙️ 모드 바꿔서 다시하기
           </button>
           <button
-            onClick={() => {
-              if (window.confirm("방을 닫고 홈으로 돌아갈까요?\n(다른 친구들도 모두 나가게 돼요)")) {
-                onFinish();
-              }
-            }}
+            onClick={() => setLeaveConfirmOpen(true)}
             style={{
               padding: 11, borderRadius: radius.lg,
               background: "transparent", color: colors.text3,
@@ -1199,11 +1197,7 @@ function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onF
             방장이 다음 게임을 준비하고 있어요
           </p>
           <button
-            onClick={() => {
-              if (window.confirm("방에서 나가고 홈으로 돌아갈까요?")) {
-                onFinish();
-              }
-            }}
+            onClick={() => setLeaveConfirmOpen(true)}
             style={{
               padding: 11, borderRadius: radius.lg,
               background: "transparent", color: colors.text3,
@@ -1216,6 +1210,22 @@ function FunResultView({ funAnswers, scenarios, players, myPlayerId, isHost, onF
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        open={leaveConfirmOpen}
+        title={isHost ? "방을 닫고 나갈까요?" : "방에서 나갈까요?"}
+        message={isHost
+          ? "방장이 나가면 친구들도 모두 나가게 돼요"
+          : "다시 들어오려면 방 코드가 필요해요"}
+        confirmLabel={isHost ? "방 닫고 나가기" : "나가기"}
+        cancelLabel="머무르기"
+        danger
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          onFinish();
+        }}
+        onCancel={() => setLeaveConfirmOpen(false)}
+      />
     </div>
   );
 }

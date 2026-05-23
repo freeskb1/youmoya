@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { leaveRoom, restartGame, returnToWaiting } from "../lib/room";
 import { calculateSoulmate } from "../lib/game";
 import { clearPlayer } from "../lib/storage";
 import Avatar from "../components/Avatar";
+import ConfirmModal from "../components/ConfirmModal";
 import MachobaPlay from "./MachobaPlay";
 import NeomoyaPlay from "./NeomoyaPlay";
 import { colors, radius, shadow, containerStyle } from "../lib/theme";
@@ -139,6 +140,7 @@ export default function GamePlay({ room, code, myPlayerId }) {
 // 최종 결과 (모드 공통)
 // ============================================
 function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHost, onLeave, onRestart, onReturnToWaiting }) {
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
   // 최고 점수 = 우승. 동점자 전부 포함
   const topScore = sortedPlayers[0]?.score || 0;
@@ -368,14 +370,7 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
           </button>
         )}
         <button
-          onClick={() => {
-            const msg = isHost
-              ? "방을 닫고 홈으로 돌아갈까요?\n(다른 친구들도 모두 나가게 돼요)"
-              : "방에서 나가고 홈으로 돌아갈까요?";
-            if (window.confirm(msg)) {
-              onLeave();
-            }
-          }}
+          onClick={() => setLeaveConfirmOpen(true)}
           style={{
             padding: 11, borderRadius: radius.lg,
             background: "transparent",
@@ -392,6 +387,22 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
           </p>
         )}
       </div>
+
+      <ConfirmModal
+        open={leaveConfirmOpen}
+        title={isHost ? "방을 닫고 나갈까요?" : "방에서 나갈까요?"}
+        message={isHost
+          ? "방장이 나가면 친구들도 모두 나가게 돼요"
+          : "다시 들어오려면 방 코드가 필요해요"}
+        confirmLabel={isHost ? "방 닫고 나가기" : "나가기"}
+        cancelLabel="머무르기"
+        danger
+        onConfirm={() => {
+          setLeaveConfirmOpen(false);
+          onLeave();
+        }}
+        onCancel={() => setLeaveConfirmOpen(false)}
+      />
     </div>
   );
 }

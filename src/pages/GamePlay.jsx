@@ -140,7 +140,10 @@ export default function GamePlay({ room, code, myPlayerId }) {
 // ============================================
 function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHost, onLeave, onRestart, onReturnToWaiting }) {
   const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
-  const winner = sortedPlayers[0];
+  // 최고 점수 = 우승. 동점자 전부 포함
+  const topScore = sortedPlayers[0]?.score || 0;
+  const winners = sortedPlayers.filter((p) => (p.score || 0) === topScore);
+  const isTie = winners.length > 1;
 
   const myLeadRounds = Object.entries(results)
     .filter(([, r]) => r.leadPlayerId === myPlayerId)
@@ -185,13 +188,42 @@ function FinalResult({ players, myPlayerId, results, allVotes, totalRounds, isHo
           fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
           background: colors.cardAccent, color: colors.cardTextDeep,
         }}>
-          👑 WINNER
+          👑 {isTie ? `WINNER (공동 ${winners.length}명)` : "WINNER"}
         </div>
         <div style={{ fontSize: 36, marginBottom: 4 }}>🏆</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: colors.cardTextDeep, marginBottom: 2 }}>
-          {winner?.nickname || "?"}
+        {/* 닉네임 - 동점이면 가운데 정렬 나열 */}
+        <div style={{
+          display: "flex", flexWrap: "wrap", justifyContent: "center",
+          alignItems: "center", gap: isTie ? 6 : 0,
+          marginBottom: 4,
+        }}>
+          {winners.map((w, i) => (
+            <span
+              key={w.id}
+              style={{
+                fontSize: isTie ? 18 : 22,
+                fontWeight: 700,
+                color: colors.cardTextDeep,
+                display: "inline-flex",
+                alignItems: "center",
+              }}
+            >
+              {w.nickname}
+              {i < winners.length - 1 && (
+                <span style={{
+                  margin: "0 4px",
+                  fontSize: 14,
+                  color: colors.cardText,
+                  opacity: 0.5,
+                  fontWeight: 400,
+                }}>
+                  ·
+                </span>
+              )}
+            </span>
+          ))}
         </div>
-        <div style={{ fontSize: 13, color: colors.cardText, fontWeight: 600 }}>{winner?.score || 0}점 획득</div>
+        <div style={{ fontSize: 13, color: colors.cardText, fontWeight: 600 }}>{topScore}점 획득</div>
       </div>
 
       {/* 나를 잘 맞춘 사람 톱3 */}

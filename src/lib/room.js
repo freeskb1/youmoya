@@ -79,26 +79,48 @@ export async function joinRoom(code, nickname) {
     return { error: "존재하지 않는 방이에요" };
   }
   const room = snapshot.val();
-  if (room.status !== "waiting") {
-    return { error: "이미 게임이 시작된 방이에요" };
+  if (room.status === "finished") {
+    return { error: "이미 종료된 방이에요" };
   }
 
   const players = room.players || {};
-  for (const id in players) {
-    if (players[id].nickname === nickname && id !== user.uid) {
-      return { error: "이미 같은 닉네임의 플레이어가 있어요" };
-    }
+
+  // 1) 이 브라우저(uid) 가 이미 방에 있으면 → 재접속 (닉네임 무시하고 기존 것 그대로 복귀)
+  if (players[user.uid]) {
+    return { code, playerId: user.uid, rejoined: true };
+  }
+
+  // 2) 신규 입장 — 닉네임 자동 부여 (다른 사람과 겹치면 (2), (3)...)
+  let finalNickname = nickname;
+  const existingNicknames = new Set(Object.values(players).map((p) => p.nickname));
+  if (existingNicknames.has(finalNickname)) {
+    let n = 2;
+    while (existingNicknames.has(`${nickname} (${n})`)) n++;
+    finalNickname = `${nickname} (${n})`;
   }
 
   const playerId = user.uid;
-  await set(ref(db, `rooms/${code}/players/${playerId}`), {
-    nickname,
+  const isGameInProgress = room.status === "playing";
+  const playerData = {
+    nickname: finalNickname,
     isHost: false,
     score: 0,
     joinedAt: serverTimestamp(),
-  });
+  };
+  // 게임 중 입장이면 관전 상태로 마킹
+  // 현재 라운드까지 관전, 다음 라운드부터 정식 참여
+  if (isGameInProgress) {
+    playerData.spectatorUntilRound = room.currentRound || 1;
+    playerData.joinedAtRound = (room.currentRound || 1) + 1;
+  }
+  await set(ref(db, `rooms/${code}/players/${playerId}`), playerData);
 
-  return { code, playerId };
+  return {
+    code,
+    playerId,
+    isSpectator: isGameInProgress,
+    nickname: finalNickname,
+  };
 }
 
 // ============================================
@@ -522,4 +544,93 @@ export async function finishNeomoyaFun(code) {
 // ============================================
 export async function closeRoom(code) {
   await remove(ref(db, `rooms/${code}`));
+}
+
+// ============================================
+// 미답변자 강제 스킵 (방장 "지금 넘기기" 버튼)
+// ============================================
+// 아직 답 안 낸 사람들을 "미답변" 으로 표시. 관전자는 제외.
+// 마쵸바: 미답변자 = 빈 배열 (0개 맞춤 처리)
+// 너모야 점수: 미답변자 = 빈 배열
+export async function forceSkipMissingVoters(code) {
+  const snapshot = await get(ref(db, `rooms/${code}`));
+  if (!snapshot.exists()) return;
+  const room = snapshot.val();
+  const round = room.currentRound;
+  const votes = room.votes?.[round] || {};
+  const players = room.players || {};
+  const leadId = room.currentLeadPlayerId;
+
+  const updates = {};
+  for (const pid of Object.keys(players)) {
+    if (pid === leadId) continue; // 선플레이어는 별도
+    const player = players[pid];
+    // 관전자 제외
+    if (player.spectatorUntilRound != null && round <= player.spectatorUntilRound) continue;
+    // 이미 답 낸 사람 제외
+    if (votes[pid]) continue;
+    // 미답변으로 마킹
+    updates[`votes/${round}/${pid}`] = { voteArray: [], matchCount: null, skipped: true };
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await update(ref(db, `rooms/${code}`), updates);
+  }
+}
+
+// 선플레이어 튕김 → 이 라운드 통째 스킵
+// 예측한 사람들 답변도 무효 처리하고 다음 라운드로
+export async function skipRoundDueToLead(code) {
+  const snapshot = await get(ref(db, `rooms/${code}`));
+  if (!snapshot.exists()) return;
+  const room = snapshot.val();
+  const round = room.currentRound;
+
+  // 이 라운드의 votes / result 지우고 nextRound 처럼 진행
+  const nextRoundNum = round + 1;
+  if (nextRoundNum > room.totalRounds) {
+    await update(ref(db, `rooms/${code}`), {
+      status: "finished",
+      [`votes/${round}`]: null,
+      [`results/${round}`]: null,
+    });
+    return;
+  }
+
+  const nextLead = room.playerOrder?.[nextRoundNum - 1];
+  const gameMode = room.gameMode || "machoba";
+  const pool = room.questionPool || [];
+  const updates = {
+    currentRound: nextRoundNum,
+    currentLeadPlayerId: nextLead,
+    leadProgress: null,
+    [`votes/${round}`]: null,
+    [`results/${round}`]: null,
+  };
+
+  if (gameMode === "machoba") {
+    const count = room.machobaCount || 5;
+    // buildMachobaFromPool 은 아래에서 재사용 (같은 pool 에서 다음 슬라이스)
+    // pool 슬라이스는 nextRoundNum-1 인덱스로 계산
+    // 하지만 이번 라운드 questionPool 부분은 이미 skip 됐으므로 그대로 두고 진행
+    const startIdx = (nextRoundNum - 1) * count;
+    updates.machoba = {
+      count,
+      questions: pool.slice(startIdx, startIdx + count),
+      leadAnswers: null,
+    };
+    updates.neomoya = null;
+  } else if (gameMode === "neomoya") {
+    const count = room.neomoyaCount || 5;
+    const startIdx = (nextRoundNum - 1) * count;
+    updates.neomoya = {
+      subMode: "score",
+      count,
+      scenarios: pool.slice(startIdx, startIdx + count),
+      leadAnswers: null,
+    };
+    updates.machoba = null;
+  }
+
+  await update(ref(db, `rooms/${code}`), updates);
 }

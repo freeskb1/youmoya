@@ -7,8 +7,10 @@ import {
   updateLeadProgress,
   nextRound,
   markReady,
+  forceSkipMissingVoters,
+  skipRoundDueToLead,
 } from "../lib/room";
-import { josa } from "../lib/game";
+import { josa, isSpectator } from "../lib/game";
 import Avatar from "../components/Avatar";
 import StepPopup from "../components/StepPopup";
 import { colors, radius, shadow, containerStyle } from "../lib/theme";
@@ -21,6 +23,8 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
   const [submitting, setSubmitting] = useState(false);
 
   const isLead = room.currentLeadPlayerId === myPlayerId;
+  const myPlayer = room.players?.[myPlayerId];
+  const iAmSpectator = isSpectator(myPlayer, room.currentRound);
   const machoba = room.machoba;
   const count = machoba?.count || 5;
   const questions = machoba?.questions || [];
@@ -37,9 +41,20 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
   }, [room.votes, room.currentRound]);
 
   const myVote = currentVotes.find((v) => v.playerId === myPlayerId);
-  const nonLeadCount = players.length - 1;
+  // 이번 라운드의 참여자 (관전자 제외)
+  const participants = useMemo(() => players.filter((p) => {
+    const spec = p.spectatorUntilRound;
+    return !(spec != null && room.currentRound <= spec);
+  }), [players, room.currentRound]);
+  const nonLeadCount = participants.filter((p) => p.id !== leadPlayer?.id).length;
   const submittedVotesCount = currentVotes.length;
   const currentResult = (room.results || {})[room.currentRound];
+
+  // 답 안 낸 참여자가 있는지 (선플 제외)
+  const hasPendingVoters = useMemo(() => {
+    const submittedIds = new Set(currentVotes.map((v) => v.playerId));
+    return participants.some((p) => p.id !== leadPlayer?.id && !submittedIds.has(p.id));
+  }, [participants, currentVotes, leadPlayer?.id]);
 
   // 진행도 (몇 번째 문제까지 답했는지)
   const machobaProg = useMemo(() => {
@@ -47,10 +62,10 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
     return { vote: prog.vote || {}, lead: prog.lead || {} };
   }, [room.machobaProgress, room.currentRound]);
 
-  // 일반 플레이어 진행도 리스트 (선플레이어 제외, 제출 완료자는 count 고정)
+  // 일반 플레이어 진행도 리스트 (선플레이어 + 관전자 제외)
   function buildVoteProgressList() {
     const submittedIds = currentVotes.map((v) => v.playerId);
-    return players
+    return participants
       .filter((p) => p.id !== leadPlayer?.id)
       .map((p) => {
         const done = submittedIds.includes(p.id);
@@ -193,6 +208,18 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
   }, [isHost, phase, readyNextCount, totalPlayerCount]); // eslint-disable-line
 
   // ============ 렌더 ============
+  // 관전자는 인트로 후 대기 화면만 (정답 공개 시엔 같이 봄)
+  if (iAmSpectator && phase !== "intro" && phase !== "result") {
+    return <SpectatorWaiting
+      round={room.currentRound}
+      totalRounds={room.totalRounds}
+      joinAtRound={(myPlayer?.joinedAtRound) || (room.currentRound + 1)}
+      leadPlayer={leadPlayer}
+      submittedCount={submittedVotesCount}
+      totalCount={nonLeadCount}
+    />;
+  }
+
   if (phase === "intro") {
     return <IntroScreen
       round={room.currentRound}
@@ -205,7 +232,16 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
   }
 
   if (phase === "lead-waiting" && isLead) {
-    return <WaitingDark round={room.currentRound} totalRounds={room.totalRounds} votedCount={submittedVotesCount} totalCount={nonLeadCount} progressList={buildVoteProgressList()} />;
+    return <WaitingDark
+      round={room.currentRound}
+      totalRounds={room.totalRounds}
+      votedCount={submittedVotesCount}
+      totalCount={nonLeadCount}
+      progressList={buildVoteProgressList()}
+      isHost={isHost}
+      hasPending={hasPendingVoters}
+      onForceSkip={() => forceSkipMissingVoters(code)}
+    />;
   }
 
   // 일반 플레이어 / 선 플레이어 모두 동일한 팝업 인터페이스
@@ -266,6 +302,10 @@ export default function MachobaPlay({ room, code, myPlayerId, leadPlayer, player
         leadCurrentStep={leadCurrentStep}
         count={count}
         myPlayerId={myPlayerId}
+        isHost={isHost}
+        hasPending={hasPendingVoters}
+        onForceSkip={() => forceSkipMissingVoters(code)}
+        onSkipRound={() => skipRoundDueToLead(code)}
       />
     );
   }
@@ -378,7 +418,7 @@ function PopupBackground({ leadPlayer, round, totalRounds, isLead }) {
 // ============================================
 // 다크 대기 (선 플레이어용)
 // ============================================
-function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList }) {
+function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList, isHost, onForceSkip, hasPending }) {
   const percent = totalCount > 0 ? (votedCount / totalCount) * 100 : 0;
   return (
     <div style={{ ...containerStyle, background: "#1A1A1A", color: "#FFFFFF", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -428,6 +468,29 @@ function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList 
               )}
             </div>
           ))}
+        </div>
+      )}
+      {/* 방장 지금 넘기기 버튼 (미답변자 있을 때만) */}
+      {isHost && hasPending && (
+        <div style={{ marginTop: 18, width: "100%", maxWidth: 260, textAlign: "center" }}>
+          <p style={{ fontSize: 10, opacity: 0.5, margin: "0 0 6px" }}>
+            안 오는 사람이 있나요?
+          </p>
+          <button
+            onClick={onForceSkip}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: radius.md,
+              background: "rgba(255,255,255,0.12)",
+              color: "#FFFFFF",
+              fontSize: 12, fontWeight: 600,
+              border: "1px solid rgba(255,255,255,0.2)",
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            지금 넘기기 (미답변자는 0점)
+          </button>
         </div>
       )}
     </div>
@@ -535,7 +598,7 @@ function AnswerRow({ index, question, answer, leadAnswer, showResult }) {
 // ============================================
 // 투표 후 대기 (선 플레이어 답변 기다림)
 // ============================================
-function VotedWaiting({ round, totalRounds, leadPlayer, questions, myAnswers, allVotersSubmitted, voteProgressList, submittedVotesCount, nonLeadCount, leadProgress, leadDone, leadCurrentStep, count, myPlayerId }) {
+function VotedWaiting({ round, totalRounds, leadPlayer, questions, myAnswers, allVotersSubmitted, voteProgressList, submittedVotesCount, nonLeadCount, leadProgress, leadDone, leadCurrentStep, count, myPlayerId, isHost, hasPending, onForceSkip, onSkipRound }) {
   return (
     <div style={{ ...containerStyle, padding: "14px 12px 16px", justifyContent: "center" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontSize: 11, color: colors.text3 }}>
@@ -631,6 +694,50 @@ function VotedWaiting({ round, totalRounds, leadPlayer, questions, myAnswers, al
             </div>
           </div>
         </>
+      )}
+      {/* 방장 지금 넘기기 (미답변자 있을 때만) */}
+      {isHost && hasPending && (
+        <div style={{ marginTop: 14, textAlign: "center" }}>
+          <p style={{ fontSize: 10, color: colors.text3, margin: "0 0 6px" }}>
+            안 오는 사람이 있나요?
+          </p>
+          <button
+            onClick={onForceSkip}
+            style={{
+              padding: "9px 14px",
+              borderRadius: radius.md,
+              background: colors.surface,
+              color: colors.text2,
+              fontSize: 11, fontWeight: 600,
+              border: `1px solid ${colors.border1}`,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            지금 넘기기 (미답변자는 0점)
+          </button>
+        </div>
+      )}
+      {/* 방장 선플 스킵 (선플이 답 안 낸 채로 튕겼을 때) */}
+      {isHost && allVotersSubmitted && !leadDone && (
+        <div style={{ marginTop: 14, textAlign: "center" }}>
+          <p style={{ fontSize: 10, color: colors.text3, margin: "0 0 6px" }}>
+            선플레이어가 안 오나요?
+          </p>
+          <button
+            onClick={onSkipRound}
+            style={{
+              padding: "9px 14px",
+              borderRadius: radius.md,
+              background: colors.surface,
+              color: colors.wrongFill,
+              fontSize: 11, fontWeight: 600,
+              border: `1px solid ${colors.border1}`,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            이 라운드 스킵 → 다음 라운드로
+          </button>
+        </div>
       )}
     </div>
   );
@@ -970,6 +1077,51 @@ function ReadyButton({ isReady, readyCount, totalCount, onClick, actionLabel }) 
           {readyCount}명이 먼저 준비됨 · 모두 준비되면 자동 진행
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// 관전 대기 화면 (게임 중 입장한 사람)
+// ============================================
+function SpectatorWaiting({ round, totalRounds, joinAtRound, leadPlayer, submittedCount, totalCount }) {
+  return (
+    <div style={{ ...containerStyle, alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{
+        padding: "20px 18px",
+        background: colors.surface,
+        borderRadius: radius.xl,
+        border: `1px solid ${colors.border1}`,
+        maxWidth: 320, width: "100%",
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>👀</div>
+        <p style={{ fontSize: 15, fontWeight: 700, color: colors.text1, margin: "0 0 6px" }}>
+          지금 라운드는 관전 중
+        </p>
+        <p style={{ fontSize: 12, color: colors.text2, margin: "0 0 16px", lineHeight: 1.5 }}>
+          Round {joinAtRound} 부터 참여할 수 있어요<br/>
+          다른 친구들 답변 기다리는 중
+        </p>
+        {leadPlayer && (
+          <div style={{
+            padding: "10px 12px",
+            background: colors.accentBg,
+            borderRadius: radius.md,
+            marginBottom: 10,
+          }}>
+            <p style={{ fontSize: 10, color: colors.text3, margin: "0 0 3px", fontWeight: 600 }}>
+              지금 선플레이어
+            </p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: colors.accentDeep, margin: 0 }}>
+              🎯 {leadPlayer.nickname}
+            </p>
+          </div>
+        )}
+        <p style={{ fontSize: 11, color: colors.text3, margin: 0 }}>
+          예측 완료: {submittedCount}/{totalCount}
+        </p>
+      </div>
     </div>
   );
 }

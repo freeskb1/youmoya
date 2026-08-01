@@ -2,6 +2,25 @@ import { QUESTIONS } from "./questions";
 import { SCENARIOS } from "./scenarios";
 
 // ============================================
+// 관전자 판단
+// ============================================
+// 게임 중 입장한 사람은 spectatorUntilRound 까지 관전자.
+// 그 다음 라운드부터 정식 참여.
+export function isSpectator(player, currentRound) {
+  if (!player) return false;
+  const until = player.spectatorUntilRound;
+  if (until == null) return false;
+  return currentRound <= until;
+}
+
+// 특정 라운드에 참여한 플레이어인지 (점수 계산용)
+export function participatedInRound(player, round) {
+  if (!player) return false;
+  const joinedAt = player.joinedAtRound || 1;
+  return round >= joinedAt;
+}
+
+// ============================================
 // 한국어 조사 처리 유틸
 // ============================================
 export function hasJongseong(str) {

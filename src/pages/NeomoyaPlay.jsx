@@ -9,8 +9,9 @@ import {
   updateLeadProgress,
   nextRound,
   markReady,
+  forceSkipMissingVoters,
 } from "../lib/room";
-import { josa, calculateFunModeStats } from "../lib/game";
+import { josa, calculateFunModeStats, isSpectator } from "../lib/game";
 import Avatar from "../components/Avatar";
 import ScenarioPopup from "../components/ScenarioPopup";
 import ConfirmModal from "../components/ConfirmModal";
@@ -24,6 +25,8 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   const count = room.neomoya?.count || 5;
   const leadAnswers = room.neomoya?.leadAnswers || null;
   const isLead = subMode === "score" && leadPlayer?.id === myPlayerId;
+  const myPlayer = room.players?.[myPlayerId];
+  const iAmSpectator = isSpectator(myPlayer, room.currentRound);
 
   const [phase, setPhase] = useState("intro"); // intro / voting-popup / voting-confirm / lead-answering / lead-confirm / voted-waiting / lead-waiting / result / reveal / fun-result
   const [myStepAnswers, setMyStepAnswers] = useState([]);
@@ -36,8 +39,20 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   }, [room.votes, room.currentRound]);
 
   const submittedVotesCount = currentVotes.length;
-  const nonLeadCount = subMode === "score" ? players.length - 1 : 0;
+  // 이번 라운드 참여자 (관전자 제외)
+  const participants = useMemo(() => players.filter((p) => {
+    const spec = p.spectatorUntilRound;
+    return !(spec != null && room.currentRound <= spec);
+  }), [players, room.currentRound]);
+  const nonLeadCount = subMode === "score" ? participants.filter((p) => p.id !== leadPlayer?.id).length : 0;
   const currentResult = room.results?.[room.currentRound];
+
+  // 답 안 낸 참여자 있는지 (선플 제외, 점수 모드용)
+  const hasPendingVoters = useMemo(() => {
+    if (subMode !== "score") return false;
+    const submittedIds = new Set(currentVotes.map((v) => v.playerId));
+    return participants.some((p) => p.id !== leadPlayer?.id && !submittedIds.has(p.id));
+  }, [participants, currentVotes, leadPlayer?.id, subMode]);
 
   // 재미 모드 - 답변 집계
   const funAnswers = useMemo(() => {
@@ -246,6 +261,17 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   }, [subMode, isHost, funSubmittedCount, totalPlayerCount, room.status]); // eslint-disable-line
 
   // ============ 렌더 ============
+  // 관전자는 인트로 후 대기 화면만 (정답 공개 시엔 같이 봄)
+  if (iAmSpectator && phase !== "intro" && phase !== "result" && phase !== "reveal") {
+    return <SpectatorWaiting
+      round={room.currentRound}
+      totalRounds={room.totalRounds}
+      joinAtRound={(myPlayer?.joinedAtRound) || (room.currentRound + 1)}
+      leadPlayer={leadPlayer}
+      subMode={subMode}
+    />;
+  }
+
   if (phase === "intro") {
     return <IntroScreen
       subMode={subMode}
@@ -285,7 +311,16 @@ export default function NeomoyaPlay({ room, code, myPlayerId, leadPlayer, player
   if (phase === "lead-waiting" && isLead) {
     const submittedIds = currentVotes.map((v) => v.playerId);
     const list = buildProgressList("scoreVote", submittedIds, [myPlayerId]); // 선플 본인 제외
-    return <WaitingDark round={room.currentRound} totalRounds={room.totalRounds} votedCount={submittedVotesCount} totalCount={nonLeadCount} progressList={list} />;
+    return <WaitingDark
+      round={room.currentRound}
+      totalRounds={room.totalRounds}
+      votedCount={submittedVotesCount}
+      totalCount={nonLeadCount}
+      progressList={list}
+      isHost={isHost}
+      hasPending={hasPendingVoters}
+      onForceSkip={() => forceSkipMissingVoters(code)}
+    />;
   }
 
   // 투표/답변 입력 팝업
@@ -580,7 +615,7 @@ function PopupBackground({ room, leadPlayer, subMode, step, total, isLead, child
 // ============================================
 // 선플레이어 대기 (점수 모드)
 // ============================================
-function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList }) {
+function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList, isHost, hasPending, onForceSkip }) {
   return (
     <div style={{ ...containerStyle, background: "#2a2520", color: "#FFF8F0", justifyContent: "center", alignItems: "center", padding: "0 16px" }}>
       <p style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1, margin: 0 }}>ROUND {round} / {totalRounds}</p>
@@ -615,6 +650,27 @@ function WaitingDark({ round, totalRounds, votedCount, totalCount, progressList 
       )}
 
       <p style={{ fontSize: 11, opacity: 0.5, marginTop: 12 }}>모두 끝나면 내 차례</p>
+      {isHost && hasPending && (
+        <div style={{ marginTop: 16, textAlign: "center" }}>
+          <p style={{ fontSize: 10, opacity: 0.5, margin: "0 0 6px" }}>
+            안 오는 사람이 있나요?
+          </p>
+          <button
+            onClick={onForceSkip}
+            style={{
+              padding: "9px 14px",
+              borderRadius: radius.md,
+              background: "rgba(255,255,255,0.12)",
+              color: "#FFF8F0",
+              fontSize: 11, fontWeight: 600,
+              border: "1px solid rgba(255,255,255,0.2)",
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            지금 넘기기 (미답변자는 0점)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1304,6 +1360,47 @@ function ReadyButton({ isReady, readyCount, totalCount, onClick, actionLabel }) 
           {readyCount}명이 먼저 준비됨 · 모두 준비되면 자동 진행
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================
+// 관전 대기 화면 (게임 중 입장한 사람)
+// ============================================
+function SpectatorWaiting({ round, totalRounds, joinAtRound, leadPlayer, subMode }) {
+  return (
+    <div style={{ ...containerStyle, alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{
+        padding: "20px 18px",
+        background: colors.surface,
+        borderRadius: radius.xl,
+        border: `1px solid ${colors.border1}`,
+        maxWidth: 320, width: "100%",
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>👀</div>
+        <p style={{ fontSize: 15, fontWeight: 700, color: colors.text1, margin: "0 0 6px" }}>
+          지금 라운드는 관전 중
+        </p>
+        <p style={{ fontSize: 12, color: colors.text2, margin: "0 0 16px", lineHeight: 1.5 }}>
+          Round {joinAtRound} 부터 참여할 수 있어요<br/>
+          다른 친구들 답변 기다리는 중
+        </p>
+        {leadPlayer && subMode === "score" && (
+          <div style={{
+            padding: "10px 12px",
+            background: colors.accentBg,
+            borderRadius: radius.md,
+          }}>
+            <p style={{ fontSize: 10, color: colors.text3, margin: "0 0 3px", fontWeight: 600 }}>
+              지금 선플레이어
+            </p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: colors.accentDeep, margin: 0 }}>
+              🎭 {leadPlayer.nickname}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

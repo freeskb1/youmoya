@@ -8,6 +8,7 @@ import {
   onValue,
   off,
   serverTimestamp,
+  runTransaction,
 } from "firebase/database";
 import {
   generateRoomCode,
@@ -121,6 +122,93 @@ export async function joinRoom(code, nickname) {
     isSpectator: isGameInProgress,
     nickname: finalNickname,
   };
+}
+
+// ============================================
+// 광배월드 자동 입장 (방 키 = h{광배월드 방번호}, 방에 hubSid 저장)
+// ============================================
+// 방장: 방이 없거나 다른 판(hubSid 다름)이면 새로 만들고, 같은 판이면 그대로 들어간다.
+// 트랜잭션이라 새로고침/중복 호출에도 멱등 (이미 들어온 멤버를 덮어쓰지 않음).
+export async function createHubRoom(code, nickname, hubSid, hubUid) {
+  const user = await ensureSignedIn();
+  const playerId = user.uid;
+  const now = Date.now(); // 트랜잭션 안에서는 serverTimestamp 대신 로컬 시각 사용
+
+  const hostPlayer = {
+    nickname,
+    isHost: true,
+    score: 0,
+    joinedAt: now,
+  };
+  if (hubUid) hostPlayer.hubUid = hubUid;
+
+  await runTransaction(ref(db, `rooms/${code}`), (current) => {
+    if (!current || current.hubSid !== hubSid) {
+      // 새 판 → 새 방 (createRoom 과 같은 기본값)
+      return {
+        code,
+        hubSid,
+        status: "waiting",
+        gameMode: "machoba",
+        neomoyaSubMode: "score",
+        machobaCount: 5,
+        neomoyaCount: 5,
+        rounds: 2,
+        currentRound: 0,
+        totalRounds: 0,
+        createdAt: now,
+        players: {
+          [playerId]: hostPlayer,
+        },
+      };
+    }
+    // 같은 판의 방이 이미 있음
+    if (current.players && current.players[playerId]) return; // 그대로 (abort = 변경 없음)
+    // 익명 uid 가 바뀐 경우 등 → 방장으로 추가
+    return {
+      ...current,
+      players: { ...(current.players || {}), [playerId]: hostPlayer },
+    };
+  });
+
+  return { code, playerId };
+}
+
+// 멤버: hubSid 가 맞는 방이 생긴 뒤 호출. 이미 players 에 있으면 다시 쓰지 않는다.
+// 닉네임 중복 처리(" (2)")는 하지 않는다 (광배월드에서 이미 겹치지 않음).
+// 종료(finished) 상태여도 입장은 허용 (방장이 리게임/대기실 복귀 가능).
+export async function joinHubRoom(code, nickname, hubUid) {
+  const user = await ensureSignedIn();
+  const playerId = user.uid;
+
+  const snapshot = await get(ref(db, `rooms/${code}`));
+  if (!snapshot.exists()) {
+    return { error: "존재하지 않는 방이에요" };
+  }
+  const room = snapshot.val();
+  const players = room.players || {};
+
+  // 이미 있으면 재접속 (게임 중이어도 그대로 복귀)
+  if (players[playerId]) {
+    return { code, playerId, rejoined: true };
+  }
+
+  const isGameInProgress = room.status === "playing";
+  const playerData = {
+    nickname,
+    isHost: false,
+    score: 0,
+    joinedAt: serverTimestamp(),
+  };
+  if (hubUid) playerData.hubUid = hubUid;
+  // 게임 도중 새로 들어온 사람은 기존 규칙대로 관전 후 다음 라운드부터 참여
+  if (isGameInProgress) {
+    playerData.spectatorUntilRound = room.currentRound || 1;
+    playerData.joinedAtRound = (room.currentRound || 1) + 1;
+  }
+  await set(ref(db, `rooms/${code}/players/${playerId}`), playerData);
+
+  return { code, playerId, isSpectator: isGameInProgress };
 }
 
 // ============================================

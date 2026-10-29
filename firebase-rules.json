@@ -4,7 +4,7 @@
       ".read": "auth != null",
       "$code": {
         ".write": "auth != null",
-        ".validate": "$code.matches(/^[0-9]{3}$/)",
+        ".validate": "$code.matches(/^[0-9]{3}$/) || $code.matches(/^h[0-9]{4}$/)",
 
         "players": {
           "$playerId": {

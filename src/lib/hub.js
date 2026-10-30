@@ -1,4 +1,4 @@
-// 광배월드(허브)에서 넘어온 쿼리 읽기
+// 말랑월드(허브)에서 넘어온 쿼리 읽기
 // ?room=4821&sid=...&uid=...&name=...&host=1&hub=...
 // hub.js 는 defer 라 window.KWANGBBAN 이 늦을 수 있으므로 location.search 를 직접 읽는다.
 export function readHubParams() {

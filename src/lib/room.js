@@ -125,7 +125,7 @@ export async function joinRoom(code, nickname) {
 }
 
 // ============================================
-// 광배월드 자동 입장 (방 키 = h{광배월드 방번호}, 방에 hubSid 저장)
+// 말랑월드 자동 입장 (방 키 = h{말랑월드 방번호}, 방에 hubSid 저장)
 // ============================================
 // 방장: 방이 없거나 다른 판(hubSid 다름)이면 새로 만들고, 같은 판이면 그대로 들어간다.
 // 트랜잭션이라 새로고침/중복 호출에도 멱등 (이미 들어온 멤버를 덮어쓰지 않음).
@@ -175,7 +175,7 @@ export async function createHubRoom(code, nickname, hubSid, hubUid) {
 }
 
 // 멤버: hubSid 가 맞는 방이 생긴 뒤 호출. 이미 players 에 있으면 다시 쓰지 않는다.
-// 닉네임 중복 처리(" (2)")는 하지 않는다 (광배월드에서 이미 겹치지 않음).
+// 닉네임 중복 처리(" (2)")는 하지 않는다 (말랑월드에서 이미 겹치지 않음).
 // 종료(finished) 상태여도 입장은 허용 (방장이 리게임/대기실 복귀 가능).
 export async function joinHubRoom(code, nickname, hubUid) {
   const user = await ensureSignedIn();

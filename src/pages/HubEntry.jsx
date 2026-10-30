@@ -4,7 +4,7 @@ import { savePlayer, saveLastNickname } from "../lib/storage";
 import { ensureSignedIn } from "../lib/firebase";
 import { colors, containerStyle } from "../lib/theme";
 
-// 광배월드에서 넘어온 경우: 첫 화면/닉네임/방 만들기·참가를 건너뛰고 바로 대기실로.
+// 말랑월드에서 넘어온 경우: 첫 화면/닉네임/방 만들기·참가를 건너뛰고 바로 대기실로.
 // params: readHubParams() 결과, onDone(code): 입장 완료 후 호출
 export default function HubEntry({ params, onDone }) {
   const [status, setStatus] = useState(params.host ? "creating" : "connecting");

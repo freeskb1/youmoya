@@ -10,13 +10,15 @@
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body, #root { margin: 0; padding: 0; min-height: 100%; }
+      /* 당겨서 새로고침(pull-to-refresh) 막기 — 실수로 새로고침되어 게임이 끊기지 않게 (스크롤은 그대로) */
+      html { overscroll-behavior-y: none; }
       body {
         background: linear-gradient(180deg, #FFF8F0 0%, #FFFDFA 100%);
         background-attachment: fixed;
         color: #2D2317;
         font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, "Roboto", sans-serif;
         -webkit-font-smoothing: antialiased;
-        overscroll-behavior-y: contain;
+        overscroll-behavior-y: none;
       }
       input, select, textarea, button { font-family: inherit; }
       input { font-size: 16px; }

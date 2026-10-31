@@ -304,12 +304,14 @@ export function buildNeomoyaScorePool(playerOrder, perRoundCount, usedScenariosR
 export function buildNeomoyaFunPool(count, usedScenarios = []) {
   const usedSet = new Set(usedScenarios);
   let available = SCENARIOS.filter((s) => !usedSet.has(s.scenario));
+  let reset = false;
   if (available.length < count) {
-    available = [...SCENARIOS]; // 안전장치
+    available = [...SCENARIOS]; // 다 썼으면 처음부터 다시
+    reset = true;
   }
   const shuffled = shuffle(available);
   const chosen = shuffled.slice(0, count);
-  const newUsed = [...usedScenarios, ...chosen.map((s) => s.scenario)];
+  const newUsed = [...(reset ? [] : usedScenarios), ...chosen.map((s) => s.scenario)];
   return { pool: chosen, newUsed };
 }
 

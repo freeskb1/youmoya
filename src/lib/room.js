@@ -145,7 +145,15 @@ export async function createHubRoom(code, nickname, hubSid, hubUid) {
   await runTransaction(ref(db, `rooms/${code}`), (current) => {
     if (!current || current.hubSid !== hubSid) {
       // 새 판 → 새 방 (createRoom 과 같은 기본값)
+      // 같은 모임이 다시 열면 이미 나온 질문/상황 이력은 이어받음 (다 나올 때까지 다시 안 나오게)
+      const carried = {};
+      if (current) {
+        ["usedQuestionsRoom", "usedScenariosRoom", "usedScenariosFun"].forEach((k) => {
+          if (current[k]) carried[k] = current[k];
+        });
+      }
       return {
+        ...carried,
         code,
         hubSid,
         status: "waiting",
